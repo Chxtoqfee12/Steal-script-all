@@ -148,23 +148,15 @@ local function RemovePlots()
 end
 
 
--- Heartbeat loop (Speed + ESP)
-game:GetService("RunService").Heartbeat:Connect(function()
-    local player = game.Players.LocalPlayer
-    local character = player.Character
-
-    -- Speed Lock
-    if SpeedEnabled and character then
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
-        if humanoid and humanoid.WalkSpeed ~= SpeedValue then
-            humanoid.WalkSpeed = SpeedValue
+-- Heartbeat loop สำหรับ ESP
+spawn(function()
+    game:GetService("RunService").Heartbeat:Connect(function()
+        if ESPEnabled then
+            for _, base in ipairs(bases) do
+                updateESP(base)
+            end
         end
-    end
-
-    -- Update ESP
-    for _, base in ipairs(bases) do
-        updateESP(base)
-    end
+    end)
 end)
 
 -- อัปเดตเมื่อ Timer.Text เปลี่ยน
@@ -184,17 +176,97 @@ end
 -- Toggle ESP, Auto Lock, Speed
 Tab:AddToggle({ Name = "Enable Base ESP", Default = false, Callback = function(Value) ESPEnabled = Value end })
 Tab:AddToggle({ Name = "Enable Auto Lock Base", Default = false, Callback = function(Value) AutoLockEnabled = Value end })
-Tab:AddToggle({ Name = "Enable Speed Boost", Default = false, Callback = function(Value)
-    SpeedEnabled = Value
-    if SpeedEnabled then
-        local player = game.Players.LocalPlayer
-        local character = player.Character or player.CharacterAdded:Wait()
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
-        if humanoid then humanoid.WalkSpeed = SpeedValue end
-    end
-end })
-Tab:AddSlider({ Name = "Speed Value", Min = 16, Max = 200, Default = 50, Color = Color3.fromRGB(255,0,0), Increment = 1, ValueName = "WalkSpeed", Callback = function(Value) SpeedValue = Value end })
 
+-- ตัวแปรสวิต Claim All
+local ClaimAllEnabled = false
+
+-- ฟังก์ชัน Claim ทุก Slot ของทุก Base
+local function ClaimAllBases()
+    local basesFolder = workspace:WaitForChild("Bases")
+    local remote = game:GetService("ReplicatedStorage")
+                    :WaitForChild("ncxyzero_bridgenet2-fork@1.1.5")
+                    :WaitForChild("dataRemoteEvent")
+
+    for i = 1, 6 do
+        local base = basesFolder:FindFirstChild(tostring(i))
+        if base then
+            local plotSlots = base:FindFirstChild("PlotSlots")
+            if plotSlots then
+                for _, slot in ipairs(plotSlots:GetChildren()) do
+                    local button = slot:FindFirstChild("ClaimButton") and slot.ClaimButton:FindFirstChild("Button")
+                    -- เช็คว่า Slot มีปุ่ม Claim และไม่มีผู้เล่นครอบครอง
+                    local owner = slot:GetAttribute("Owner") -- สมมติเกมใช้ Attribute Owner
+                    if button and (not owner or owner == "") then
+                        local args = { {button, "\a"} }
+                        remote:FireServer(unpack(args))
+                        wait(0.1) -- delay เล็กน้อยเพื่อไม่ให้ Remote รัวเกินไป
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Heartbeat loop สำหรับ Claim All Bases
+spawn(function()
+    game:GetService("RunService").Heartbeat:Connect(function()
+        if ClaimAllEnabled then
+            ClaimAllBases()
+        end
+    end)
+end)
+
+-- เพิ่มสวิตใน Tab
+Tab:AddToggle({
+    Name = "Enable Claim All Bases",
+    Default = false,
+    Callback = function(Value)
+        ClaimAllEnabled = Value
+    end
+})
+
+
+
+-- ปุ่ม Remove Plot
+Tab:AddButton({
+    Name = "Remove All Plots",
+    Callback = function()
+        RemovePlots() -- ลบทันที
+        if not RemovePlotLoop then
+            RemovePlotLoop = true
+            spawn(function()
+                while RemovePlotLoop do
+                    RemovePlots() -- ลบต่อเนื่อง
+                    wait(0.5)
+                end
+            end)
+        end
+    end
+})
+
+
+-- สร้าง Tab
+local Tab = Window:MakeTab({
+    Name = "Main",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+-- Heartbeat loop สำหรับ Speed
+spawn(function()
+    game:GetService("RunService").Heartbeat:Connect(function()
+        if SpeedEnabled then
+            local player = game.Players.LocalPlayer
+            local character = player.Character
+            if character then
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                if humanoid and humanoid.WalkSpeed ~= SpeedValue then
+                    humanoid.WalkSpeed = SpeedValue
+                end
+            end
+        end
+    end)
+end)
 
 -- Infinity Jump
 Tab:AddToggle({ Name = "Enable Infinity Jump", Default = false, Callback = function(Value) InfinityJumpEnabled = Value end })
@@ -213,19 +285,13 @@ UIS.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- ปุ่ม Remove Plot
-Tab:AddButton({
-    Name = "Remove All Plots",
-    Callback = function()
-        RemovePlots() -- ลบทันที
-        if not RemovePlotLoop then
-            RemovePlotLoop = true
-            spawn(function()
-                while RemovePlotLoop do
-                    RemovePlots() -- ลบต่อเนื่อง
-                    wait(0.5)
-                end
-            end)
-        end
+Tab:AddToggle({ Name = "Enable Speed Boost", Default = false, Callback = function(Value)
+    SpeedEnabled = Value
+    if SpeedEnabled then
+        local player = game.Players.LocalPlayer
+        local character = player.Character or player.CharacterAdded:Wait()
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid then humanoid.WalkSpeed = SpeedValue end
     end
-})
+end })
+Tab:AddSlider({ Name = "Speed Value", Min = 16, Max = 200, Default = 50, Color = Color3.fromRGB(255,0,0), Increment = 1, ValueName = "WalkSpeed", Callback = function(Value) SpeedValue = Value end })
