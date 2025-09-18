@@ -124,7 +124,7 @@ local function updateESP(base)
             local timeText = tostring(timeLeft).."s"
 
             local displayText = "Base "..base.Name.."\nLock: "..timeText
-            if playersInBase ~= "" then displayText = displayText.."\nPlayer: "..playersInBase end
+            if playersInBase ~= "" then displayText = displayText.."\n"..playersInBase end
 
             ESPTexts[base].Text = displayText
 
