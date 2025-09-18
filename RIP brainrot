@@ -3,7 +3,7 @@ local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/Chxt
 
 -- สร้าง Window
 local Window = OrionLib:MakeWindow({
-    Name = "ESP + Auto Lock + Speed + NoClip+RemovePlot",
+    Name = "RIP Brainrot",
     HidePremium = true,
     SaveConfig = true,
     ConfigFolder = "ChxOnConfig"
@@ -14,77 +14,27 @@ local ESPEnabled = false
 local AutoLockEnabled = false
 local SpeedEnabled = false
 local SpeedValue = 50
-local NoClipEnabled = false
-
--- สร้าง Tab และ Toggle
-local Tab = Window:MakeTab({
-    Name = "ESP Control",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
-Tab:AddToggle({
-    Name = "Enable Base ESP",
-    Default = false,
-    Callback = function(Value)
-        ESPEnabled = Value
-    end
-})
-
-Tab:AddToggle({
-    Name = "Enable Auto Lock Base",
-    Default = false,
-    Callback = function(Value)
-        AutoLockEnabled = Value
-    end
-})
-
-Tab:AddToggle({
-    Name = "Enable Speed Boost",
-    Default = false,
-    Callback = function(Value)
-        SpeedEnabled = Value
-        if SpeedEnabled then
-            local player = game.Players.LocalPlayer
-            local character = player.Character or player.CharacterAdded:Wait()
-            local humanoid = character:FindFirstChildOfClass("Humanoid")
-            if humanoid then
-                humanoid.WalkSpeed = SpeedValue
-            end
-        end
-    end
-})
-
-Tab:AddSlider({
-    Name = "Speed Value",
-    Min = 16,
-    Max = 200,
-    Default = 50,
-    Color = Color3.fromRGB(255,0,0),
-    Increment = 1,
-    ValueName = "WalkSpeed",
-    Callback = function(Value)
-        SpeedValue = Value
-    end
-})
-
-Tab:AddToggle({
-    Name = "Enable NoClip + Remove Plot",
-    Default = false,
-    Callback = function(Value)
-        NoClipEnabled = Value
-    end
-})
+local RemovePlotLoop = false
+local InfinityJumpEnabled = false
+local Character, InvisibleCharacter
+local bodyPos, invisDied
+local invisRunning = false
+local IsInvis = false
 
 -- เตรียม Bases 1-6
 local basesFolder = workspace:WaitForChild("Bases")
 local bases = {}
 for i = 1, 6 do
     local base = basesFolder:FindFirstChild(tostring(i))
-    if base then
-        table.insert(bases, base)
-    end
+    if base then table.insert(bases, base) end
 end
+
+-- สร้าง Tab
+local Tab = Window:MakeTab({
+    Name = "Main",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
 
 -- ฟังก์ชันสร้าง ESP
 local function createESPLabel(base)
@@ -127,7 +77,6 @@ local function getBaseTime(base)
                         and base.LockgateButton.Button:FindFirstChild("LockTimer")
                         and base.LockgateButton.Button.LockTimer:FindFirstChild("Frame")
                         and base.LockgateButton.Button.LockTimer.Frame:FindFirstChild("Timer")
-
     if timerLabel and timerLabel:IsA("TextLabel") and timerLabel.Text ~= "" then
         local text = timerLabel.Text:lower()
         local minutes = tonumber(text:match("(%d+)m")) or 0
@@ -175,9 +124,7 @@ local function updateESP(base)
             local timeText = tostring(timeLeft).."s"
 
             local displayText = "Base "..base.Name.."\nLock: "..timeText
-            if playersInBase ~= "" then
-                displayText = displayText.."\nPlayer: "..playersInBase
-            end
+            if playersInBase ~= "" then displayText = displayText.."\nPlayer: "..playersInBase end
 
             ESPTexts[base].Text = displayText
 
@@ -190,12 +137,19 @@ local function updateESP(base)
     end
 end
 
--- Heartbeat loop
-game:GetService("RunService").Heartbeat:Connect(function()
+-- ฟังก์ชัน Remove Plot
+local function RemovePlots()
     for _, base in ipairs(bases) do
-        updateESP(base)
+        local plotDecor = base:FindFirstChild("PlotDecor", true)
+        if plotDecor then plotDecor:Destroy() end
+        local plotTeritory = base:FindFirstChild("PlotTeritory", true)
+        if plotTeritory then plotTeritory:Destroy() end
     end
+end
 
+
+-- Heartbeat loop (Speed + ESP)
+game:GetService("RunService").Heartbeat:Connect(function()
     local player = game.Players.LocalPlayer
     local character = player.Character
 
@@ -207,25 +161,11 @@ game:GetService("RunService").Heartbeat:Connect(function()
         end
     end
 
-    -- NoClip + Remove PlotTeritory
-    if NoClipEnabled and character then
-        -- NoClip
-        for _, part in pairs(character:GetChildren()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
-            end
-        end
-        -- Remove PlotTeritory ทุกฐาน
-        for _, base in ipairs(bases) do
-            local plot = base:FindFirstChild("PlotTeritory")
-            if plot then
-                plot:Destroy()
-            end
-        end
+    -- Update ESP
+    for _, base in ipairs(bases) do
+        updateESP(base)
     end
 end)
-
-
 
 -- อัปเดตเมื่อ Timer.Text เปลี่ยน
 for _, base in ipairs(bases) do
@@ -241,20 +181,24 @@ for _, base in ipairs(bases) do
     end)
 end
 
--- เพิ่ม Toggle Infinity Jump ใน Orion
-local InfinityJumpEnabled = false
-
-Tab:AddToggle({
-    Name = "Enable Infinity Jump",
-    Default = false,
-    Callback = function(Value)
-        InfinityJumpEnabled = Value
+-- Toggle ESP, Auto Lock, Speed
+Tab:AddToggle({ Name = "Enable Base ESP", Default = false, Callback = function(Value) ESPEnabled = Value end })
+Tab:AddToggle({ Name = "Enable Auto Lock Base", Default = false, Callback = function(Value) AutoLockEnabled = Value end })
+Tab:AddToggle({ Name = "Enable Speed Boost", Default = false, Callback = function(Value)
+    SpeedEnabled = Value
+    if SpeedEnabled then
+        local player = game.Players.LocalPlayer
+        local character = player.Character or player.CharacterAdded:Wait()
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid then humanoid.WalkSpeed = SpeedValue end
     end
-})
+end })
+Tab:AddSlider({ Name = "Speed Value", Min = 16, Max = 200, Default = 50, Color = Color3.fromRGB(255,0,0), Increment = 1, ValueName = "WalkSpeed", Callback = function(Value) SpeedValue = Value end })
 
--- ฟังชั่น Infinity Jump
+
+-- Infinity Jump
+Tab:AddToggle({ Name = "Enable Infinity Jump", Default = false, Callback = function(Value) InfinityJumpEnabled = Value end })
 local UIS = game:GetService("UserInputService")
-
 UIS.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if InfinityJumpEnabled and input.UserInputType == Enum.UserInputType.Keyboard then
@@ -263,124 +207,25 @@ UIS.InputBegan:Connect(function(input, gameProcessed)
             local character = player.Character
             if character then
                 local humanoid = character:FindFirstChildOfClass("Humanoid")
-                if humanoid then
-                    humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-                end
+                if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end
             end
         end
     end
 end)
 
--- Invisible variables
-local invisRunning = false
-local IsInvis = false
-local Character, InvisibleCharacter
-local bodyPos
-local invisDied
-
-local function TurnInvisible()
-    if invisRunning or IsInvis then return end
-    invisRunning = true
-
-    local player = game.Players.LocalPlayer
-    Character = player.Character
-    if not Character then invisRunning = false return end
-    Character.Archivable = true
-
-    InvisibleCharacter = Character:Clone()
-    InvisibleCharacter.Parent = workspace
-
-    for _, v in pairs(InvisibleCharacter:GetDescendants()) do
-        if v:IsA("BasePart") then
-            v.Transparency = (v.Name == "HumanoidRootPart") and 1 or 0.5
-        end
-    end
-
-    local root = Character:FindFirstChild("HumanoidRootPart")
-    if root then
-        root.CFrame = root.CFrame + Vector3.new(0,600,0)
-        bodyPos = Instance.new("BodyPosition")
-        bodyPos.MaxForce = Vector3.new(1e5,1e5,1e5)
-        bodyPos.P = 3e4
-        bodyPos.Position = root.Position
-        bodyPos.Parent = root
-    end
-
-    player.Character = InvisibleCharacter
-    IsInvis = true
-
-    local humanoid = InvisibleCharacter:FindFirstChildOfClass("Humanoid")
-    if humanoid then
-        workspace.CurrentCamera.CameraSubject = humanoid
-        invisDied = humanoid.Died:Connect(TurnVisible)
-    end
-
-    if InvisibleCharacter:FindFirstChild("Animate") then
-        InvisibleCharacter.Animate.Disabled = true
-        InvisibleCharacter.Animate.Disabled = false
-    end
-
-    invisRunning = false
-end
-
-function TurnVisible()
-    if not IsInvis then return end
-
-    local player = game.Players.LocalPlayer
-    local CF
-    local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-    if root then CF = root.CFrame end
-
-    if InvisibleCharacter then
-        InvisibleCharacter:Destroy()
-        InvisibleCharacter = nil
-    end
-
-    if Character and Character.Parent then
-        player.Character = Character
-        if CF and Character:FindFirstChild("HumanoidRootPart") then
-            Character.HumanoidRootPart.CFrame = CF
-        end
-        local humanoid = Character:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            workspace.CurrentCamera.CameraSubject = humanoid
-        end
-    end
-
-    if bodyPos then
-        bodyPos:Destroy()
-        bodyPos = nil
-    end
-
-    if Character and Character:FindFirstChild("Animate") then
-        Character.Animate.Disabled = true
-        Character.Animate.Disabled = false
-    end
-
-    if invisDied then
-        invisDied:Disconnect()
-        invisDied = nil
-    end
-
-    IsInvis = false
-end
-
-Tab:AddToggle({
-    Name = "Invisible",
-    Default = false,
-    Flag = "InvisibleToggle",
-    Callback = function(value)
-        if value then
-            local success, err = pcall(TurnInvisible)
-            if not success then
-                warn("TurnInvisible error: "..tostring(err))
-            end
-        else
-            local success, err = pcall(TurnVisible)
-            if not success then
-                warn("TurnVisible error: "..tostring(err))
-            end
+-- ปุ่ม Remove Plot
+Tab:AddButton({
+    Name = "Remove All Plots",
+    Callback = function()
+        RemovePlots() -- ลบทันที
+        if not RemovePlotLoop then
+            RemovePlotLoop = true
+            spawn(function()
+                while RemovePlotLoop do
+                    RemovePlots() -- ลบต่อเนื่อง
+                    wait(0.5)
+                end
+            end)
         end
     end
 })
-
