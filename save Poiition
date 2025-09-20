@@ -1,0 +1,107 @@
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+
+local savedPosition = nil
+
+-- ===== UI =====
+local screenGui = Instance.new("ScreenGui")
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 180, 0, 150)
+mainFrame.Position = UDim2.new(0.5, -90, 0.5, -75)
+mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+
+-- Header
+local header = Instance.new("TextLabel")
+header.Size = UDim2.new(1, 0, 0, 30)
+header.BackgroundColor3 = Color3.fromRGB(50,50,50)
+header.Text = "Teleport UI"
+header.TextColor3 = Color3.fromRGB(255,255,255)
+header.Parent = mainFrame
+
+-- Close Button
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -30, 0, 0)
+closeBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.fromRGB(255,255,255)
+closeBtn.Parent = mainFrame
+closeBtn.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+end)
+
+-- Save Position Button
+local saveBtn = Instance.new("TextButton")
+saveBtn.Size = UDim2.new(0.9, 0, 0, 35)
+saveBtn.Position = UDim2.new(0.05, 0, 0, 40)
+saveBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+saveBtn.TextColor3 = Color3.fromRGB(255,255,255)
+saveBtn.Text = "Save Position"
+saveBtn.Parent = mainFrame
+
+-- Teleport Button
+local tpBtn = Instance.new("TextButton")
+tpBtn.Size = UDim2.new(0.9, 0, 0, 35)
+tpBtn.Position = UDim2.new(0.05, 0, 0, 85)
+tpBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+tpBtn.TextColor3 = Color3.fromRGB(255,255,255)
+tpBtn.Text = "Teleport"
+tpBtn.Parent = mainFrame
+
+-- ===== Dragging =====
+local dragging = false
+local dragInput, mousePos, framePos
+
+header.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        mousePos = input.Position
+        framePos = mainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+header.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - mousePos
+        mainFrame.Position = UDim2.new(framePos.X.Scale, framePos.X.Offset + delta.X, framePos.Y.Scale, framePos.Y.Offset + delta.Y)
+    end
+end)
+
+-- ===== Functions =====
+saveBtn.MouseButton1Click:Connect(function()
+    local character = player.Character
+    if character and character:FindFirstChild("HumanoidRootPart") then
+        savedPosition = character.HumanoidRootPart.Position
+        saveBtn.Text = "Saved!"
+        wait(1)
+        saveBtn.Text = "Save Position"
+    end
+end)
+
+tpBtn.MouseButton1Click:Connect(function()
+    local character = player.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") or not savedPosition then return end
+
+    local hrp = character.HumanoidRootPart
+    local attempts = 20 -- วาปรัว ๆ 20 ครั้ง
+    for i = 1, attempts do
+        hrp.CFrame = CFrame.new(savedPosition)
+        wait(0.05) -- เว้นนิดนึง แต่เร็วมาก
+    end
+end)
