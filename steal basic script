@@ -1,3 +1,6 @@
+-- 🌈 Invisible + Noclip + Infinity Jump (กดค้างได้) + JumpBoost + SpeedBoost + Invisible 2 UI (ครบจบ)
+-- ⭐ แก้ไขบั๊ก Invisible 2 (ตัวละครลอยค้าง) และทำให้วาร์ปกลับสู่พื้นเหมือน Invisible 1
+-- ✅ NEW: เพิ่มการล็อค Speed/JumpBoost ให้คงที่ตาม Slider (ไม่ให้ตัวเกมเปลี่ยน)
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -9,23 +12,32 @@ local player = Players.LocalPlayer
 -- ตัวแปรหลัก
 -- =========================
 local invisRunning = false
-local IsInvis = false
+local IsInvis = false         -- สถานะ Invisible 1 (บินลอยฟ้า)
+local IsInvis2 = false        -- ⭐ สถานะ Invisible 2 (ใต้ดิน)
 local noclipEnabled = false
-local Character, InvisibleCharacter
+local Character, InvisibleCharacter, InvisibleCharacter2 
 local bodyPos
 local invisDied
-local toggleKey = Enum.KeyCode.F -- 🔥 กด F เพื่อเปิด/ปิด Invisible
+local toggleKey = Enum.KeyCode.F
 
--- ⭐ ตัวแปรใหม่สำหรับ Boosts และ Infinity Jump
 local infinityJump = false
-local jumpBoostValue = 50 -- ค่าเริ่มต้นสำหรับ JumpBoost (ค่าสูงสุดที่แนะนำ 200)
-local speedBoostValue = 16 -- ค่าเริ่มต้นสำหรับ SpeedBoost (ค่าสูงสุดที่แนะนำ 100)
+local jumpBoostValue = 50
+local speedBoostValue = 16
 
--- ⭐ ตัวแปรใหม่สำหรับจัดการ Noclip Connection
 local noclipConnection = nil
-
--- ⭐ จัดการการเกิดใหม่ของตัวละครเพื่อให้ Boosts และ Noclip ทำงานต่อเนื่อง
 local characterAddedConnection = nil
+local boostSyncConnection = nil -- ⭐ NEW: Connection สำหรับการบังคับใช้ Boost
+
+-- ⭐ ตัวแปรสำหรับ Invisible 2
+local Depth = -30
+local highlight
+local syncConnection
+local invis2Running = false
+
+-- ⭐ ตัวแปรสำหรับ Infinity Jump (ต่อเนื่อง)
+local infinityJumpConnection = nil
+local JUMP_COOLDOWN = 0.1 
+
 
 -- =========================
 -- ฟังก์ชัน Boosts
@@ -34,36 +46,98 @@ local function ApplyBoosts()
 	if player.Character then
 		local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
 		if humanoid then
-			-- ใช้ค่าจาก slider บวกกับค่าพื้นฐาน
 			humanoid.JumpPower = 50 + jumpBoostValue
 			humanoid.WalkSpeed = 16 + speedBoostValue
 		end
 	end
 end
 
--- ⭐ ฟังก์ชันที่ใช้ผูกเมื่อตัวละครใหม่ปรากฏ
-local function OnCharacterAdded(char)
-    -- ใช้ delay เล็กน้อยเพื่อให้แน่ใจว่า Humanoid ถูกโหลดแล้ว
-    char:WaitForChild("Humanoid").Died:Wait()
-    task.wait(0.1) 
+-- ⭐ NEW: ฟังก์ชันบังคับใช้ Boost ตลอดเวลา
+local function StartBoostSync()
+    if boostSyncConnection then return end
     
-    -- นำ Boosts มาใช้ทันทีเมื่อเกิดใหม่
-    ApplyBoosts()
-    
-    -- หาก Noclip เปิดอยู่ ให้เปิด Noclip อีกครั้งบนตัวละครใหม่
-    if noclipEnabled then
-        SetNoclip(true)
+    -- ใช้ Heartbeat เพื่อให้ทำงานอย่างต่อเนื่องทุกเฟรม
+    boostSyncConnection = RunService.Heartbeat:Connect(ApplyBoosts)
+end
+
+local function StopBoostSync()
+    if boostSyncConnection then
+        boostSyncConnection:Disconnect()
+        boostSyncConnection = nil
+    end
+    -- รีเซ็ตเป็นค่าเริ่มต้นของ Roblox
+    if player.Character then
+        local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.JumpPower = 50 
+            humanoid.WalkSpeed = 16
+        end
     end
 end
 
--- ⭐ เชื่อมต่อเหตุการณ์ CharacterAdded ทันที
+-- ฟังก์ชันที่ใช้ผูกเมื่อตัวละครใหม่ปรากฏ
+local function OnCharacterAdded(char)
+    local humanoid = char:WaitForChild("Humanoid")
+    if humanoid then
+        humanoid.Died:Wait()
+    end
+    task.wait(0.1) 
+    
+    ApplyBoosts()
+    
+    if noclipEnabled then
+        if not noclipConnection then
+            SetNoclip(true)
+        end
+    end
+    
+    if infinityJump and not infinityJumpConnection then
+        StartContinuousJump()
+    end
+end
+
 characterAddedConnection = player.CharacterAdded:Connect(OnCharacterAdded)
-ApplyBoosts() -- เรียกใช้ครั้งแรก
+ApplyBoosts()
+
 
 -- =========================
--- ฟังก์ชัน Invisible (ไม่มีการแก้ไขหลัก)
+-- ฟังก์ชัน Noclip
+-- =========================
+local function SetNoclip(state)
+    if noclipConnection then
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+    end
+    
+	noclipEnabled = state
+    
+	if noclipEnabled then
+		noclipConnection = RunService.Stepped:Connect(function()
+			if player.Character then
+				for _, v in pairs(player.Character:GetDescendants()) do
+					if v:IsA("BasePart") and v.CanCollide == true then
+						v.CanCollide = false
+					end
+				end
+			end
+		end)
+	else
+        if player.Character then
+            for _, v in pairs(player.Character:GetDescendants()) do
+                if v:IsA("BasePart") then
+                    v.CanCollide = true
+                end
+            end
+        end
+	end
+end
+
+-- =========================
+-- ฟังก์ชัน Invisible / Visible 1 (ลอยฟ้า)
 -- =========================
 local function TurnInvisible()
+    if IsInvis2 then TurnVisible2() end
+    
 	if invisRunning or IsInvis then return end
 	invisRunning = true
 
@@ -71,14 +145,13 @@ local function TurnInvisible()
 	if not Character then invisRunning = false return end
 	Character.Archivable = true
 
-	InvisibleCharacter = Character:Clone()
-	InvisibleCharacter.Parent = workspace
-    
-    -- ⭐ ตรวจสอบและนำ Noclip ออกจากตัวละครเดิมก่อน Invisible
     if noclipConnection and noclipEnabled then
         noclipConnection:Disconnect()
         noclipConnection = nil
     end
+
+	InvisibleCharacter = Character:Clone()
+	InvisibleCharacter.Parent = workspace
 
 	for _, v in pairs(InvisibleCharacter:GetDescendants()) do
 		if v:IsA("BasePart") then
@@ -98,16 +171,12 @@ local function TurnInvisible()
 
 	player.Character = InvisibleCharacter
 	IsInvis = true
-    
-    -- ⭐ ApplyBoosts บน InvisibleCharacter
     ApplyBoosts() 
 
 	local humanoid = InvisibleCharacter:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		workspace.CurrentCamera.CameraSubject = humanoid
-		invisDied = humanoid.Died:Connect(function()
-			IsInvis = false
-		end)
+		invisDied = humanoid.Died:Connect(function() IsInvis = false end)
 	end
 
 	if InvisibleCharacter:FindFirstChild("Animate") then
@@ -115,10 +184,7 @@ local function TurnInvisible()
 		InvisibleCharacter.Animate.Disabled = false
 	end
     
-    -- ⭐ เปิด Noclip บน InvisibleCharacter ถ้าเปิดอยู่
-    if noclipEnabled then
-        SetNoclip(true)
-    end
+    if noclipEnabled then SetNoclip(true) end
 
 	invisRunning = false
 end
@@ -129,7 +195,6 @@ local function TurnVisible()
 	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 	if root then CF = root.CFrame end
     
-    -- ⭐ ปิด Noclip บน InvisibleCharacter ก่อน Visible
     if noclipConnection then
         noclipConnection:Disconnect()
         noclipConnection = nil
@@ -151,75 +216,210 @@ local function TurnVisible()
 		end
 	end
 
-	if bodyPos then
-		bodyPos:Destroy()
-		bodyPos = nil
-	end
+	if bodyPos then bodyPos:Destroy() bodyPos = nil end
 
 	if Character and Character:FindFirstChild("Animate") then
 		Character.Animate.Disabled = true
 		Character.Animate.Disabled = false
 	end
 
+	if invisDied then invisDied:Disconnect() invisDied = nil end
+    
+    ApplyBoosts()
+    if noclipEnabled then SetNoclip(true) end
+
+	IsInvis = false
+end
+
+
+-- =========================
+-- ฟังก์ชัน Invisible 2 / Visible 2 (ใต้ดิน)
+-- =========================
+local function TurnInvisible2()
+    if IsInvis then TurnVisible() end
+    
+	if invis2Running or IsInvis2 then return end
+	invis2Running = true
+    
+    if noclipConnection then
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+    end
+
+	Character = player.Character
+	if not Character then invis2Running = false return end
+	Character.Archivable = true
+
+	InvisibleCharacter2 = Character:Clone()
+	InvisibleCharacter2.Parent = workspace
+
+	for _, v in pairs(InvisibleCharacter2:GetDescendants()) do
+		if v:IsA("BasePart") then
+			v.Transparency = (v.Name == "HumanoidRootPart") and 1 or 0.4
+			v.CanCollide = true 
+		end
+	end
+
+	local root = Character:FindFirstChild("HumanoidRootPart")
+	local invisRoot = InvisibleCharacter2:FindFirstChild("HumanoidRootPart")
+
+	if root and invisRoot then
+		root.CFrame = invisRoot.CFrame * CFrame.new(0, Depth, 0)
+
+		highlight = Instance.new("Highlight")
+		highlight.Parent = Character
+		highlight.FillColor = Color3.fromRGB(255, 0, 0)
+		highlight.OutlineColor = Color3.fromRGB(255, 50, 50)
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+
+		for _, v in pairs(Character:GetDescendants()) do
+			if v:IsA("BasePart") then
+				v.Anchored = false
+				v.CanCollide = false -- ทำให้ร่างจริงมุดลงไปได้
+			end
+		end
+		root.Anchored = false
+
+		syncConnection = RunService.Heartbeat:Connect(function()
+			if not root or not invisRoot then return end
+			root.CFrame = invisRoot.CFrame * CFrame.new(0, Depth, 0)
+		end)
+	end
+
+	player.Character = InvisibleCharacter2
+	IsInvis2 = true
+    ApplyBoosts() 
+
+    if InvisibleCharacter2:FindFirstChild("Animate") then
+        InvisibleCharacter2.Animate.Disabled = true
+        InvisibleCharacter2.Animate.Disabled = false
+    end
+
+	local humanoid = InvisibleCharacter2:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		workspace.CurrentCamera.CameraSubject = humanoid
+		invisDied = humanoid.Died:Connect(function()
+			TurnVisible2()
+		end)
+	end
+
+	invis2Running = false
+end
+
+local function TurnVisible2()
+	if not IsInvis2 then return end
+
+	if syncConnection then
+		syncConnection:Disconnect()
+		syncConnection = nil
+	end
+
+    -- ต้องหา Humanoid ของร่างจริงก่อนจะเปลี่ยน player.Character
+    local actualHumanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+    
 	if invisDied then
 		invisDied:Disconnect()
 		invisDied = nil
 	end
     
-    -- ⭐ ApplyBoosts บน Character ตัวจริงหลังจาก Visible
-    ApplyBoosts()
+    -- ⭐ 1. เก็บ Animate script จากร่างโคลนก่อนทำลาย
+    local clonedAnimateScript = nil
+    if InvisibleCharacter2 and InvisibleCharacter2:FindFirstChild("Animate") then
+        clonedAnimateScript = InvisibleCharacter2.Animate:Clone()
+    end
     
-    -- ⭐ เปิด Noclip บน Character ตัวจริง ถ้าเปิดอยู่
+    -- คืนค่า CanCollide ให้กับร่างจริง
+    if Character then
+        for _, v in pairs(Character:GetDescendants()) do
+			if v:IsA("BasePart") then
+				v.CanCollide = true
+			end
+		end
+    end
+
     if noclipEnabled then
         SetNoclip(true)
     end
 
-	IsInvis = false
-end
+	local root = Character and Character:FindFirstChild("HumanoidRootPart")
+	local invisRoot = InvisibleCharacter2 and InvisibleCharacter2:FindFirstChild("HumanoidRootPart")
 
--- =========================
--- ฟังก์ชัน Noclip
--- =========================
-local function SetNoclip(state)
-    -- ⭐ การแก้ไข: ตัดการเชื่อมต่อเก่าก่อนเสมอ
-    if noclipConnection then
-        noclipConnection:Disconnect()
-        noclipConnection = nil
+	if root and invisRoot then
+		-- วาร์ปกลับสู่ตำแหน่งของร่างโคลนที่อยู่บนพื้นทันที
+		root.CFrame = invisRoot.CFrame 
+	end
+
+	if InvisibleCharacter2 then
+		InvisibleCharacter2:Destroy()
+		InvisibleCharacter2 = nil
+	end
+
+	if highlight then
+		highlight:Destroy()
+		highlight = nil
+	end
+
+	player.Character = Character
+    
+    -- ⭐ 2. จัดการ Animate Script ในร่างจริง
+    if Character and clonedAnimateScript then
+        -- ลบ Animate script เดิมของร่างจริง (ถ้ามี)
+        local existingAnimate = Character:FindFirstChild("Animate")
+        if existingAnimate then
+            existingAnimate:Destroy()
+        end
+        -- ใส่สคริปต์ที่โคลนกลับเข้าไป
+        clonedAnimateScript.Parent = Character
     end
     
-	noclipEnabled = state
+    -- ⭐ 3. บังคับเปลี่ยนสถานะ Humanoid ให้พร้อมเดิน (สำคัญมาก!)
+    if actualHumanoid then
+        -- ใช้ Running เพื่อบังคับเริ่มแอนิเมชันทันที
+        actualHumanoid:ChangeState(Enum.HumanoidStateType.Running)
+    end
     
-	if noclipEnabled then
-        -- ⭐ การแก้ไข: เก็บ Connection ไว้ในตัวแปร noclipConnection
-		noclipConnection = RunService.Stepped:Connect(function()
-			if player.Character then
-				for _, v in pairs(player.Character:GetDescendants()) do
-					if v:IsA("BasePart") and v.CanCollide == true then
-						v.CanCollide = false
-					end
-				end
-			end
-		end)
-	else
-        -- ⭐ การแก้ไข: คืนค่า CanCollide ให้เป็นค่าเริ่มต้น
-        if player.Character then
-            for _, v in pairs(player.Character:GetDescendants()) do
-                if v:IsA("BasePart") then
-                    v.CanCollide = true
-                end
-            end
-        end
+    ApplyBoosts()
+
+	if Character and actualHumanoid then
+		workspace.CurrentCamera.CameraSubject = actualHumanoid
 	end
+
+	IsInvis2 = false
 end
 
 -- =========================
--- UI หลัก (ไม่มีการแก้ไขตำแหน่ง)
+-- ฟังก์ชัน Infinity Jump (Continuous)
+-- =========================
+local function StartContinuousJump()
+    if infinityJumpConnection then return end
+    
+    infinityJumpConnection = RunService.Heartbeat:Connect(function()
+        if infinityJump and UserInputService:IsKeyDown(Enum.KeyCode.Space) and player.Character then
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+            
+            if humanoid and humanoid:GetState() == Enum.HumanoidStateType.Freefall then
+                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end
+    end)
+end
+
+local function StopContinuousJump()
+    if infinityJumpConnection then
+        infinityJumpConnection:Disconnect()
+        infinityJumpConnection = nil
+    end
+end
+
+
+-- =========================
+-- UI หลัก 
 -- =========================
 local gui = Instance.new("ScreenGui", game.CoreGui)
 gui.Name = "InvisUI"
 
 local main = Instance.new("Frame", gui)
-main.Size = UDim2.new(0, 300, 0, 330) 
+main.Size = UDim2.new(0, 300, 0, 430) 
 main.Position = UDim2.new(0.35, 0, 0.35, 0)
 main.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 main.BorderSizePixel = 0
@@ -240,17 +440,16 @@ Instance.new("UICorner", topbar).CornerRadius = UDim.new(0, 15)
 local title = Instance.new("TextLabel", topbar)
 title.Size = UDim2.new(0.7, 0, 1, 0)
 title.BackgroundTransparency = 1
-title.Text = "BASIC script CHX"
+title.Text = "Invisible + Boosts"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 16
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.Position = UDim2.new(0.05, 0, 0, 0)
 
--- ปุ่มย่อ / ปิด
 local minimize = Instance.new("TextButton", topbar)
 minimize.Size = UDim2.new(0, 35, 0, 35)
-minimize.Position = UDim2.new(0.75, 0, 0, 0)
+minimize.Position = UDim2.new(0.88, 0, 0, 0) 
 minimize.Text = "🗕"
 minimize.Font = Enum.Font.GothamBold
 minimize.TextSize = 18
@@ -259,14 +458,13 @@ minimize.TextColor3 = Color3.fromRGB(255, 255, 255)
 
 local close = Instance.new("TextButton", topbar)
 close.Size = UDim2.new(0, 35, 0, 35)
-close.Position = UDim2.new(0.88, 0, 0, 0)
+close.Position = UDim2.new(0.80, 0, 0, 0) 
 close.Text = "❌"
 close.Font = Enum.Font.GothamBold
 close.TextSize = 18
 close.BackgroundTransparency = 1
 close.TextColor3 = Color3.fromRGB(255, 120, 120)
 
--- ฟังก์ชันสร้างปุ่ม
 local function createButton(text, yPos)
 	local btn = Instance.new("TextButton", main)
 	btn.Size = UDim2.new(0.85, 0, 0, 40)
@@ -280,14 +478,12 @@ local function createButton(text, yPos)
 	return btn
 end
 
--- กำหนดตำแหน่งปุ่ม
-local toggleBtn = createButton("🔘 Invisible: OFF", 0.12)
-local noclipBtn = createButton("🚀 Noclip: OFF", 0.25)
-local infJumpBtn = createButton("🌟 Infinity Jump: OFF", 0.38)
+local toggleBtn = createButton("☁️ Invisible 1 (ลอยฟ้า): OFF", 0.10)
+local toggleBtn2 = createButton("🔻 Invisible 2 (ใต้ดิน): OFF", 0.21)
+local noclipBtn = createButton("🚀 Noclip: OFF", 0.32)
+local infJumpBtn = createButton("🌟 Infinity Jump: OFF", 0.43)
 
--- ฟังก์ชันสร้าง Slider
 local function createSlider(text, yPos)
-	-- TextLabel แสดงชื่อและค่า
 	local sliderLabel = Instance.new("TextLabel", main)
 	sliderLabel.Size = UDim2.new(0.85, 0, 0, 25)
 	sliderLabel.Position = UDim2.new(0.075, 0, yPos, 0)
@@ -298,15 +494,13 @@ local function createSlider(text, yPos)
 	sliderLabel.TextSize = 15
 	Instance.new("UICorner", sliderLabel).CornerRadius = UDim.new(0, 10)
 
-	-- Frame พื้นหลัง Slider
 	local sliderBar = Instance.new("Frame", main)
 	sliderBar.Size = UDim2.new(0.85, 0, 0, 10)
-	sliderBar.Position = UDim2.new(0.075, 0, yPos + 0.08, 0)
+	sliderBar.Position = UDim2.new(0.075, 0, yPos + 0.05, 0)
 	sliderBar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 	Instance.new("UICorner", sliderBar).CornerRadius = UDim.new(0, 5)
     sliderBar.Active = true 
 
-	-- Thumb (จุดลาก)
 	local sliderThumb = Instance.new("Frame", sliderBar)
 	sliderThumb.Size = UDim2.new(0, 10, 1, 0)
 	sliderThumb.Position = UDim2.new(0, 0, 0, 0)
@@ -316,27 +510,37 @@ local function createSlider(text, yPos)
 	return sliderLabel, sliderBar, sliderThumb
 end
 
--- กำหนดตำแหน่ง Slider
 local jumpSliderLabel, jumpSliderBar, jumpSliderThumb = createSlider("JumpBoost: "..jumpBoostValue, 0.54)
-local speedSliderLabel, speedSliderBar, speedSliderThumb = createSlider("SpeedBoost: "..speedBoostValue, 0.73)
+local speedSliderLabel, speedSliderBar, speedSliderThumb = createSlider("SpeedBoost: "..speedBoostValue, 0.65)
+local depthSliderLabel, depthSliderBar, depthSliderThumb = createSlider("ความลึกใต้ดิน: "..Depth, 0.76)
 
 
 -- =========================
--- ฟังก์ชัน UI / Logic
+-- ฟังก์ชัน UI / Logic 
 -- =========================
-local function ToggleInvisible()
-	if IsInvis then
-		TurnVisible()
-		toggleBtn.Text = "🔘 Invisible: OFF"
+toggleBtn.MouseButton1Click:Connect(function()
+    if IsInvis then
+        TurnVisible()
+		toggleBtn.Text = "☁️ Invisible 1 (ลอยฟ้า): OFF"
 		TweenService:Create(toggleBtn, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(60, 60, 60)}):Play()
 	else
-		TurnInvisible()
-		toggleBtn.Text = "🟢 Invisible: ON"
+        TurnInvisible()
+		toggleBtn.Text = "🟢 Invisible 1 (ลอยฟ้า): ON"
 		TweenService:Create(toggleBtn, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(0, 170, 100)}):Play()
 	end
-end
+end)
 
-toggleBtn.MouseButton1Click:Connect(ToggleInvisible)
+toggleBtn2.MouseButton1Click:Connect(function()
+    if IsInvis2 then
+        TurnVisible2()
+		toggleBtn2.Text = "🔻 Invisible 2 (ใต้ดิน): OFF"
+		TweenService:Create(toggleBtn2, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(60, 60, 60)}):Play()
+	else
+        TurnInvisible2()
+		toggleBtn2.Text = "🟢 Invisible 2 (ใต้ดิน): ON"
+		TweenService:Create(toggleBtn2, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(0, 170, 100)}):Play()
+	end
+end)
 
 noclipBtn.MouseButton1Click:Connect(function()
 	noclipEnabled = not noclipEnabled
@@ -349,6 +553,13 @@ end)
 
 infJumpBtn.MouseButton1Click:Connect(function()
 	infinityJump = not infinityJump
+    
+    if infinityJump then
+        StartContinuousJump() 
+    else
+        StopContinuousJump() 
+    end
+    
 	infJumpBtn.Text = infinityJump and "🟢 Infinity Jump: ON" or "🌟 Infinity Jump: OFF"
 	TweenService:Create(infJumpBtn, TweenInfo.new(0.3), {
 		BackgroundColor3 = infinityJump and Color3.fromRGB(0, 170, 100) or Color3.fromRGB(60, 60, 60)
@@ -357,22 +568,34 @@ end)
 
 
 -- ฟังก์ชันตั้งค่า Slider
-local function setupSlider(sliderLabel, sliderBar, sliderThumb, valueVar, maxVal, textPrefix)
+local function setupSlider(sliderLabel, sliderBar, sliderThumb, valueVar, maxVal, minVal, textPrefix)
 	local function updateSlider(mouseX)
 		local ratio = math.clamp(mouseX / sliderBar.AbsoluteSize.X, 0, 1)
-		
-		-- กำหนดค่าในตัวแปรหลัก
+        
+        local range = maxVal - minVal
+		local value = minVal + (ratio * range)
+        
         if valueVar == "jumpBoostValue" then
-            jumpBoostValue = math.floor(ratio * maxVal)
+            jumpBoostValue = math.floor(value)
         elseif valueVar == "speedBoostValue" then
-            speedBoostValue = math.floor(ratio * maxVal)
+            speedBoostValue = math.floor(value)
+        elseif valueVar == "Depth" then
+            Depth = math.floor(value)
+            -- อัพเดทความลึกเมื่อเลื่อนสไลเดอร์
+            if IsInvis2 and InvisibleCharacter2 and Character then
+                 local root = Character:FindFirstChild("HumanoidRootPart")
+                 local invisRoot = InvisibleCharacter2:FindFirstChild("HumanoidRootPart")
+                 if root and invisRoot then
+                     root.CFrame = invisRoot.CFrame * CFrame.new(0, Depth, 0)
+                 end
+            end
         end
 		
-		-- อัพเดท UI
-		sliderLabel.Text = textPrefix .. (valueVar == "jumpBoostValue" and jumpBoostValue or speedBoostValue)
+        local displayValue = (valueVar == "jumpBoostValue" and jumpBoostValue) or (valueVar == "speedBoostValue" and speedBoostValue) or Depth
+		sliderLabel.Text = textPrefix .. displayValue
 		sliderThumb.Position = UDim2.new(ratio, -5, 0, 0)
 		
-		ApplyBoosts() -- เรียกใช้ฟังก์ชัน Boosts ทุกครั้งที่ค่าเปลี่ยน
+		ApplyBoosts()
 	end
 
 	sliderBar.InputBegan:Connect(function(input)
@@ -380,7 +603,6 @@ local function setupSlider(sliderLabel, sliderBar, sliderThumb, valueVar, maxVal
 			local mouse = player:GetMouse()
 			local conn
 			
-			-- อัพเดทตำแหน่งทันทีที่คลิก
 			updateSlider(input.Position.X - sliderBar.AbsolutePosition.X)
 
 			conn = mouse.Move:Connect(function()
@@ -399,33 +621,41 @@ local function setupSlider(sliderLabel, sliderBar, sliderThumb, valueVar, maxVal
 	end)
 end
 
--- ตั้งค่า Slider สำหรับ JumpBoost และ SpeedBoost
-setupSlider(jumpSliderLabel, jumpSliderBar, jumpSliderThumb, "jumpBoostValue", 200, "JumpBoost: ")
-setupSlider(speedSliderLabel, speedSliderBar, speedSliderThumb, "speedBoostValue", 100, "SpeedBoost: ")
+setupSlider(jumpSliderLabel, jumpSliderBar, jumpSliderThumb, "jumpBoostValue", 200, 0, "JumpBoost: ")
+setupSlider(speedSliderLabel, speedSliderBar, speedSliderThumb, "speedBoostValue", 100, 0, "SpeedBoost: ")
+setupSlider(depthSliderLabel, depthSliderBar, depthSliderThumb, "Depth", -1, -100, "ความลึกใต้ดิน: ")
 
--- ปรับตำแหน่ง Thumb และ Label เริ่มต้น
+-- ตั้งค่าเริ่มต้นของ Slider UI
+local jumpRatio = jumpBoostValue / 200
+jumpSliderThumb.Position = UDim2.new(jumpRatio, -5, 0, 0)
 jumpSliderLabel.Text = "JumpBoost: "..jumpBoostValue
-jumpSliderThumb.Position = UDim2.new(jumpBoostValue/200, -5, 0, 0)
 
+local speedRatio = speedBoostValue / 100
+speedSliderThumb.Position = UDim2.new(speedRatio, -5, 0, 0)
 speedSliderLabel.Text = "SpeedBoost: "..speedBoostValue
-speedSliderThumb.Position = UDim2.new(speedBoostValue/100, -5, 0, 0)
 
+local depthRatio = (-30 - (-100)) / ((-1) - (-100))
+depthSliderThumb.Position = UDim2.new(depthRatio, -5, 0, 0)
+depthSliderLabel.Text = "ความลึกใต้ดิน: "..Depth
 
 close.MouseButton1Click:Connect(function()
 	TurnVisible()
+    TurnVisible2()
+    StopContinuousJump() 
     
-    -- ⭐ การแก้ไข: ตัดการเชื่อมต่อ Noclip เมื่อปิด UI
     if noclipConnection then
         noclipConnection:Disconnect()
         noclipConnection = nil
     end
     
-	-- รีเซ็ตค่า Boosts เมื่อปิด UI
+    StopBoostSync() -- ⭐ หยุดการบังคับใช้ Boosts
+	
 	jumpBoostValue = 0
 	speedBoostValue = 0
-	ApplyBoosts()
+	ApplyBoosts() 
 	
 	IsInvis = false
+    IsInvis2 = false
 	noclipEnabled = false
 	infinityJump = false
 	main.Visible = false
@@ -438,20 +668,26 @@ local minimized = false
 minimize.MouseButton1Click:Connect(function()
 	minimized = not minimized
 	if minimized then
+        -- ย่อ: ซ่อนทุกอย่างยกเว้น Topbar และย่อขนาด main
 		for _, child in pairs(main:GetChildren()) do
 			if child ~= topbar then child.Visible = false end
 		end
 		TweenService:Create(main, TweenInfo.new(0.3), {Size = UDim2.new(0, 300, 0, 40)}):Play()
 	else
-		for _, child in pairs(main:GetChildren()) do
-			child.Visible = true
-		end
-		TweenService:Create(main, TweenInfo.new(0.3), {Size = UDim2.new(0, 300, 0, 330)}):Play() 
+        -- ขยาย: ขยายขนาด main ก่อน
+		TweenService:Create(main, TweenInfo.new(0.3), {Size = UDim2.new(0, 300, 0, 430)}):Play() 
+        
+        -- หน่วงเวลาเล็กน้อย (0.2 วิ) แล้วค่อยแสดง UI ส่วนอื่น
+        task.delay(0.2, function()
+            for _, child in pairs(main:GetChildren()) do
+                child.Visible = true
+            end
+        end)
 	end
 end)
 
 -- =========================
--- ระบบลาก UI (ไม่มีการเปลี่ยนแปลง)
+-- ระบบลาก UI
 -- =========================
 local dragging = false
 local dragStart, startPos
@@ -495,21 +731,17 @@ end)
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
 	if input.KeyCode == toggleKey then
-		ToggleInvisible()
+        if IsInvis then
+		    TurnVisible()
+            toggleBtn.Text = "☁️ Invisible 1 (ลอยฟ้า): OFF"
+            TweenService:Create(toggleBtn, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(60, 60, 60)}):Play()
+        else
+            TurnInvisible()
+            toggleBtn.Text = "🟢 Invisible 1 (ลอยฟ้า): ON"
+            TweenService:Create(toggleBtn, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(0, 170, 100)}):Play()
+        end
 	end
 end)
 
--- Infinity Jump Logic (ไม่มีการแก้ไขหลัก)
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
-	if input.KeyCode == Enum.KeyCode.Space and infinityJump then
-		if player.Character then
-			local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-			if humanoid and humanoid:GetState() == Enum.HumanoidStateType.Freefall then
-				humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-			end
-		end
-	end
-end)
-
--- Apply initial boosts (ถูกเรียกไปแล้วข้างบน)
+-- ⭐ เริ่มบังคับใช้ Boost ทันที
+StartBoostSync()
