@@ -1,107 +1,166 @@
 local Players = game:GetService("Players")
-local player = Players.LocalPlayer
 local UserInputService = game:GetService("UserInputService")
 
+local player = Players.LocalPlayer
+if not player then
+    warn("LocalPlayer not found. Script stopped.")
+    return
+end
+
 local savedPosition = nil
+local screenGui = nil
+local mainFrame = nil
 
--- ===== UI =====
-local screenGui = Instance.new("ScreenGui")
-screenGui.Parent = player:WaitForChild("PlayerGui")
+-- === แก้ไขตรงนี้: กำหนดตำแหน่งเริ่มต้นเป็นมุมซ้ายบน โดยมี Offset 150px (ขวา) และ 50px (ล่าง) ===
+-- X: 0% ของหน้าจอ + 150 pixels (ห่างจากขอบซ้าย 150px)
+-- Y: 0% ของหน้าจอ + 50 pixels (ห่างจากขอบบน 50px)
+local currentFramePosition = UDim2.new(0, 150, 0, 50) 
 
-local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 180, 0, 150)
-mainFrame.Position = UDim2.new(0.5, -90, 0.5, -75)
-mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-mainFrame.BorderSizePixel = 0
-mainFrame.Parent = screenGui
-
--- Header
-local header = Instance.new("TextLabel")
-header.Size = UDim2.new(1, 0, 0, 30)
-header.BackgroundColor3 = Color3.fromRGB(50,50,50)
-header.Text = "Teleport UI"
-header.TextColor3 = Color3.fromRGB(255,255,255)
-header.Parent = mainFrame
-
--- Close Button
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0, 30, 0, 30)
-closeBtn.Position = UDim2.new(1, -30, 0, 0)
-closeBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-closeBtn.Text = "X"
-closeBtn.TextColor3 = Color3.fromRGB(255,255,255)
-closeBtn.Parent = mainFrame
-closeBtn.MouseButton1Click:Connect(function()
-    screenGui:Destroy()
-end)
-
--- Save Position Button
-local saveBtn = Instance.new("TextButton")
-saveBtn.Size = UDim2.new(0.9, 0, 0, 35)
-saveBtn.Position = UDim2.new(0.05, 0, 0, 40)
-saveBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
-saveBtn.TextColor3 = Color3.fromRGB(255,255,255)
-saveBtn.Text = "Save Position"
-saveBtn.Parent = mainFrame
-
--- Teleport Button
-local tpBtn = Instance.new("TextButton")
-tpBtn.Size = UDim2.new(0.9, 0, 0, 35)
-tpBtn.Position = UDim2.new(0.05, 0, 0, 85)
-tpBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
-tpBtn.TextColor3 = Color3.fromRGB(255,255,255)
-tpBtn.Text = "Teleport"
-tpBtn.Parent = mainFrame
-
--- ===== Dragging =====
-local dragging = false
-local dragInput, mousePos, framePos
-
-header.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        mousePos = input.Position
-        framePos = mainFrame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
+-- ฟังก์ชันสำหรับสร้างและตั้งค่า UI ทั้งหมด
+local function createAndSetupUI()
+    -- ขั้นตอนที่ 1: บันทึกตำแหน่งเก่าก่อนทำลาย (เพื่อรักษาตำแหน่งที่ลากไป)
+    if mainFrame and mainFrame.Parent then
+        currentFramePosition = mainFrame.Position
+        screenGui:Destroy()
     end
-end)
+    
+    -- ===== UI Creation =====
+    screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "TeleportGui"
+    screenGui.Parent = player.PlayerGui
 
-header.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement then
-        dragInput = input
-    end
-end)
+    mainFrame = Instance.new("Frame")
+    mainFrame.Size = UDim2.new(0, 180, 0, 150)
+    
+    -- ขั้นตอนที่ 2: ใช้ตำแหน่งที่บันทึกไว้
+    mainFrame.Position = currentFramePosition 
+    
+    mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Parent = screenGui
 
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - mousePos
-        mainFrame.Position = UDim2.new(framePos.X.Scale, framePos.X.Offset + delta.X, framePos.Y.Scale, framePos.Y.Offset + delta.Y)
-    end
-end)
+    -- Header (ส่วนที่ใช้ลาก)
+    local header = Instance.new("TextLabel")
+    header.Size = UDim2.new(1, 0, 0, 30)
+    header.BackgroundColor3 = Color3.fromRGB(50,50,50)
+    header.Text = "Teleport UI"
+    header.TextColor3 = Color3.fromRGB(255,255,255)
+    header.Parent = mainFrame
+    
+    -- Close Button
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 30, 0, 30)
+    closeBtn.Position = UDim2.new(1, -30, 0, 0)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+    closeBtn.Text = "X"
+    closeBtn.TextColor3 = Color3.fromRGB(255,255,255)
+    closeBtn.Parent = mainFrame
+    closeBtn.MouseButton1Click:Connect(function()
+        -- บันทึกตำแหน่งสุดท้ายก่อนปิด
+        currentFramePosition = mainFrame.Position 
+        screenGui:Destroy()
+    end)
 
--- ===== Functions =====
-saveBtn.MouseButton1Click:Connect(function()
-    local character = player.Character
-    if character and character:FindFirstChild("HumanoidRootPart") then
-        savedPosition = character.HumanoidRootPart.Position
-        saveBtn.Text = "Saved!"
-        wait(1)
-        saveBtn.Text = "Save Position"
-    end
-end)
+    -- Save Position Button
+    local saveBtn = Instance.new("TextButton")
+    saveBtn.Size = UDim2.new(0.9, 0, 0, 35)
+    saveBtn.Position = UDim2.new(0.05, 0, 0, 40)
+    saveBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+    saveBtn.TextColor3 = Color3.fromRGB(255,255,255)
+    saveBtn.Text = savedPosition and "Position Saved" or "Save Position"
+    saveBtn.Parent = mainFrame
 
-tpBtn.MouseButton1Click:Connect(function()
-    local character = player.Character
-    if not character or not character:FindFirstChild("HumanoidRootPart") or not savedPosition then return end
+    -- Teleport Button
+    local tpBtn = Instance.new("TextButton")
+    tpBtn.Size = UDim2.new(0.9, 0, 0, 35)
+    tpBtn.Position = UDim2.new(0.05, 0, 0, 85)
+    tpBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+    tpBtn.TextColor3 = Color3.fromRGB(255,255,255)
+    tpBtn.Text = "Teleport"
+    tpBtn.Parent = mainFrame
 
-    local hrp = character.HumanoidRootPart
-    local attempts = 20 -- วาปรัว ๆ 20 ครั้ง
-    for i = 1, attempts do
-        hrp.CFrame = CFrame.new(savedPosition)
-        wait(0.05) -- เว้นนิดนึง แต่เร็วมาก
-    end
-end)
+    -- ===== Dragging Logic =====
+    local dragging = false
+    local dragStartPos = nil 
+    local frameStartPos = nil 
+
+    header.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStartPos = input.Position
+            frameStartPos = mainFrame.Position
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement and dragging and mainFrame then
+            local delta = input.Position - dragStartPos
+            local newPosition = UDim2.new(
+                frameStartPos.X.Scale, 
+                frameStartPos.X.Offset + delta.X, 
+                frameStartPos.Y.Scale, 
+                frameStartPos.Y.Offset + delta.Y
+            )
+            mainFrame.Position = newPosition
+            
+            -- อัปเดตตำแหน่งทุกครั้งที่ลาก
+            currentFramePosition = newPosition 
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+
+    -- ===== Button Functions =====
+    saveBtn.MouseButton1Click:Connect(function()
+        local character = player.Character
+        if character and character:FindFirstChild("HumanoidRootPart") then
+            savedPosition = character.HumanoidRootPart.Position
+            saveBtn.Text = "Saved!"
+            task.wait(1)
+            saveBtn.Text = "Position Saved"
+        else
+            saveBtn.Text = "Need Character!"
+            task.wait(1)
+            saveBtn.Text = "Save Position"
+        end
+    end)
+
+    tpBtn.MouseButton1Click:Connect(function()
+        local character = player.Character
+        local hrp = character and character:FindFirstChild("HumanoidRootPart")
+        
+        if not character or not hrp or not savedPosition then 
+            tpBtn.Text = "No Save/Char!"
+            task.wait(1)
+            tpBtn.Text = "Teleport"
+            return 
+        end
+
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid and humanoid.Health <= 0 then 
+            tpBtn.Text = "Wait Respawn!"
+            task.wait(1)
+            tpBtn.Text = "Teleport"
+            return
+        end
+        
+        local attempts = 20
+        
+        for i = 1, attempts do
+            hrp.CFrame = CFrame.new(savedPosition)
+            task.wait(0.05)
+        end
+        
+    end)
+end
+
+-- ===== Main Connection Logic =====
+player.CharacterAdded:Connect(createAndSetupUI)
+
+if player.Character then
+    createAndSetupUI()
+end
