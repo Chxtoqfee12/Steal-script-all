@@ -1,0 +1,252 @@
+--[[
+    ===================================================================
+    BRAINROT FARMER SCRIPT - FINAL VERSION (LocalScript)
+    ===================================================================
+    อัปเดต: 
+    - เมื่อกดปุ่ม 'X' เพื่อปิด UI จะทำการ **หยุด Auto Poop** ทันที
+    ===================================================================
+--]]
+
+-- ******************************************************
+-- 1. การตั้งค่าและตัวแปรเริ่มต้น
+-- ******************************************************
+local isAutoPooping = false
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Player = game.Players.LocalPlayer
+
+-- รอ Character และ Humanoid
+local Character = Player.Character or Player.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid") 
+
+local PlayerGui = Player:WaitForChild("PlayerGui")
+local UserInputService = game:GetService("UserInputService")
+
+-- Remote Events และ Functions (ตรวจสอบชื่ออีกครั้งว่าถูกต้อง)
+local StartPoop = ReplicatedStorage:WaitForChild("StartPoopMinigameServer")
+local PoopSuccess = ReplicatedStorage:WaitForChild("PoopSuccessEvent")
+local SellBrainrot = ReplicatedStorage:WaitForChild("SellBrainrotRequest")
+
+-- สีที่ใช้สำหรับ UI
+local MainColor = Color3.fromRGB(40, 40, 40)
+local AccentColor = Color3.fromRGB(60, 60, 60)
+local ToggleOnColor = Color3.fromRGB(0, 150, 0)
+local ToggleOffColor = Color3.fromRGB(150, 0, 0)
+local ButtonColor = Color3.fromRGB(50, 50, 50) 
+
+-- ******************************************************
+-- 2. ฟังก์ชันการทำงานหลัก (Brainrot & Sell)
+-- ******************************************************
+
+-- ฟังก์ชันสำหรับหยุดแอนิเมชันที่กำลังเล่นทั้งหมด (แก้ปัญหาล็อคตัวละคร)
+local function stopAllAnimations()
+    local animator = Humanoid:FindFirstChildOfClass("Animator")
+    if animator then
+        for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+            track:Stop()
+        end
+    end
+end
+
+-- ฟังก์ชัน Brainrot Loop 
+local function performBrainrot()
+    -- ตรวจสอบว่า Character ยังมีอยู่หรือไม่
+    if not Character or not Humanoid or Humanoid.Health <= 0 then
+        isAutoPooping = false
+        updatePoopButtonText(isAutoPooping)
+        return
+    end
+
+    if isAutoPooping then
+        -- 1. เริ่มมินิเกม
+        StartPoop:FireServer()
+        task.wait(0.000001) 
+        -- 2. สำเร็จมินิเกม
+        PoopSuccess:FireServer()
+        
+        -- หยุดแอนิเมชันที่อาจล็อคการเคลื่อนไหว เพื่อให้เดินได้ปกติ
+        stopAllAnimations() 
+    end
+end
+
+local function autoPoopLoop()
+    task.spawn(function()
+        while isAutoPooping do
+            performBrainrot()
+            task.wait(0.000001) -- หน่วงเวลา 0.5 วินาที
+        end
+    end)
+end
+
+-- ฟังก์ชัน Sell All
+local function sellAllBrainrot()
+    local args = {"all"}
+    local success, result = pcall(function()
+        return SellBrainrot:InvokeServer(unpack(args))
+    end)
+    
+    if success then
+        print("[Sell] ขาย Brainrot ทั้งหมดสำเร็จ!")
+    else
+        print("[Sell] ขาย Brainrot ล้มเหลว! Error: " .. tostring(result))
+    end
+end
+
+-- ******************************************************
+-- 3. การสร้าง GUI (Sleek Design พร้อม Layout)
+-- ******************************************************
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SleekBrainrotUI"
+ScreenGui.Parent = PlayerGui
+
+-- Main Frame (Container)
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 250, 0, 200)
+MainFrame.Position = UDim2.new(0.5, -125, 0.5, -100)
+MainFrame.BackgroundColor3 = MainColor
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = MainFrame
+
+-- Top Bar (สำหรับลากย้าย)
+local TopBar = Instance.new("Frame")
+TopBar.Name = "TopBar"
+TopBar.Size = UDim2.new(1, 0, 0, 30)
+TopBar.Position = UDim2.new(0, 0, 0, 0)
+TopBar.BackgroundColor3 = AccentColor
+TopBar.BorderSizePixel = 0
+TopBar.Parent = MainFrame
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -30, 1, 0)
+Title.Position = UDim2.new(0, 10, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 18
+Title.TextColor3 = Color3.new(1, 1, 1)
+Title.Text = "BRAINROT FARMER"
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = TopBar
+
+-- ปุ่มปิด UI (X)
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
+CloseButton.Size = UDim2.new(0, 20, 0, 20)
+CloseButton.Position = UDim2.new(1, -25, 0, 5)
+CloseButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+CloseButton.Font = Enum.Font.SourceSansBold
+CloseButton.TextSize = 18
+CloseButton.TextColor3 = Color3.new(1, 1, 1)
+CloseButton.Text = "X"
+CloseButton.BorderSizePixel = 0
+CloseButton.Parent = TopBar
+
+-- Container สำหรับปุ่มฟังก์ชัน
+local ButtonContainer = Instance.new("Frame")
+ButtonContainer.Size = UDim2.new(1, 0, 1, -30)
+ButtonContainer.Position = UDim2.new(0, 0, 0, 30)
+ButtonContainer.BackgroundTransparency = 1
+ButtonContainer.Parent = MainFrame
+
+local ListLayout = Instance.new("UIListLayout")
+ListLayout.Padding = UDim.new(0, 10) 
+ListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center 
+ListLayout.VerticalAlignment = Enum.VerticalAlignment.Center    
+ListLayout.Parent = ButtonContainer
+
+-- ปุ่ม Auto Poop Toggle
+local PoopToggleButton = Instance.new("TextButton")
+PoopToggleButton.Name = "PoopToggle"
+PoopToggleButton.Size = UDim2.new(0.8, 0, 0, 40)
+PoopToggleButton.BackgroundColor3 = ButtonColor
+PoopToggleButton.Font = Enum.Font.GothamBold
+PoopToggleButton.TextSize = 16
+PoopToggleButton.TextColor3 = Color3.new(1, 1, 1)
+PoopToggleButton.BorderSizePixel = 0
+PoopToggleButton.Parent = ButtonContainer 
+
+-- ปุ่ม Sell All Brainrot
+local SellAllButton = Instance.new("TextButton")
+SellAllButton.Name = "SellAll"
+SellAllButton.Size = UDim2.new(0.8, 0, 0, 40)
+SellAllButton.BackgroundColor3 = Color3.fromRGB(50, 150, 200)
+SellAllButton.Font = Enum.Font.GothamBold
+SellAllButton.TextSize = 16
+SellAllButton.TextColor3 = Color3.new(1, 1, 1)
+SellAllButton.Text = "SELL ALL BRAINROT"
+SellAllButton.BorderSizePixel = 0
+SellAllButton.Parent = ButtonContainer 
+
+
+-- ******************************************************
+-- 4. การผูก Logic เข้ากับ UI
+-- ******************************************************
+
+local function updatePoopButtonText(status)
+    if status then
+        PoopToggleButton.Text = "AUTO POOP: ON"
+        PoopToggleButton.BackgroundColor3 = ToggleOnColor
+    else
+        PoopToggleButton.Text = "AUTO POOP: OFF"
+        PoopToggleButton.BackgroundColor3 = ToggleOffColor
+    end
+end
+
+PoopToggleButton.MouseButton1Click:Connect(function()
+    isAutoPooping = not isAutoPooping
+    updatePoopButtonText(isAutoPooping)
+    
+    if isAutoPooping then
+        autoPoopLoop()
+    end
+end)
+
+SellAllButton.MouseButton1Click:Connect(sellAllBrainrot)
+
+-- **โค้ดที่ได้รับการแก้ไข:** สั่งหยุด Auto Poop เมื่อปิด UI
+CloseButton.MouseButton1Click:Connect(function()
+    -- 1. สั่งหยุด Auto Poop
+    isAutoPooping = false
+    -- 2. อัปเดตสถานะปุ่ม (แสดงเป็น OFF)
+    updatePoopButtonText(isAutoPooping)
+    -- 3. ปิดซ่อน UI
+    MainFrame.Visible = false
+end)
+
+
+-- ฟังก์ชันลากย้าย (Drag Function)
+local dragging = false
+local dragStart = Vector2.new(0, 0)
+local startPos = UDim2.new(0, 0, 0, 0)
+
+TopBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = UserInputService:GetMouseLocation()
+        startPos = MainFrame.Position
+        input:Capture()
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = UserInputService:GetMouseLocation() - dragStart
+        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, 
+                                        startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+-- ******************************************************
+-- 5. การเริ่มต้น
+-- ******************************************************
+updatePoopButtonText(isAutoPooping)
+print("Sleek Brainrot UI Loaded. Now stops all functions when closed.")
