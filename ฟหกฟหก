@@ -1,5 +1,6 @@
 -- ======================================
--- 🌿 CHX Auto Dodge + Radar + ESP + Status (GUI ครบ)
+-- -- 🌿 CHX Auto Dodge + Radar + ESP + Status (GUI ครบ)
+-- -- โค้ดฉบับเดิมที่ไม่มีระบบจดจำ Prop ที่หลบไปแล้ว
 -- ======================================
 
 -- Services
@@ -226,6 +227,7 @@ statusLabel.Position = UDim2.new(0,0,0.8,0)
 statusLabel.BackgroundTransparency = 1
 statusLabel.Text = "Status: Idle"
 statusLabel.TextColor3 = Color3.fromRGB(255,255,0)
+local rootPart = character:WaitForChild("HumanoidRootPart")
 statusLabel.Font = Enum.Font.GothamBold
 statusLabel.TextSize = 16
 statusLabel.Parent = frame
@@ -283,9 +285,10 @@ RunService.Heartbeat:Connect(function()
 		radarPart.Size = Vector3.new(sideDist*2,0.2,frontDist)
 	end
 
-	if shieldPart then
-		shieldPart.CFrame = root.CFrame * CFrame.new(0,1,-5) * CFrame.Angles(math.rad(-20),0,0)
-	end
+	-- ไม่มี shieldPart ในโค้ดเดิมที่ให้มา, สมมติว่าไม่มีการใช้งาน
+	-- if shieldPart then
+	-- 	shieldPart.CFrame = root.CFrame * CFrame.new(0,1,-5) * CFrame.Angles(math.rad(-20),0,0)
+	-- end
 
 	if AutoDodge then
 		local propPos = CheckRadar()
@@ -340,17 +343,18 @@ RunService.Heartbeat:Connect(function()
 				statusText = "Moving Forward"
 			end
 		end
-
-		if shieldPart then
-			local shieldCF = shieldPart.CFrame
-			local shieldPos = shieldCF.Position
-			local shieldSize = shieldPart.Size
-			local offset = root.Position - shieldPos
-			if math.abs(offset.X) <= shieldSize.X/2 and math.abs(offset.Z) <= shieldSize.Z/2 and offset.Y <= 2 then
-				desiredMove = 0
-				statusText = "Blocked by Shield"
-			end
-		end
+		
+		-- ไม่มี shieldPart ในโค้ดเดิมที่ให้มา, ส่วนนี้จะไม่ทำงาน
+		-- if shieldPart then
+		-- 	local shieldCF = shieldPart.CFrame
+		-- 	local shieldPos = shieldCF.Position
+		-- 	local shieldSize = shieldPart.Size
+		-- 	local offset = root.Position - shieldPos
+		-- 	if math.abs(offset.X) <= shieldSize.X/2 and math.abs(offset.Z) <= shieldSize.Z/2 and offset.Y <= 2 then
+		-- 		desiredMove = 0
+		-- 		statusText = "Blocked by Shield"
+		-- 	end
+		-- end
 
 		if desiredMove ~= 0 then
 			if not dodging then
