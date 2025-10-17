@@ -1,0 +1,344 @@
+-- ======================================
+-- 🌿 CHX Auto Dodge + Radar + ESP (GUI ครบ)
+-- ======================================
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+
+-- Player & Character
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local root = character:WaitForChild("HumanoidRootPart")
+
+-- Remote สำหรับควบคุมสัตว์
+local moveEvent = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("Animals"):WaitForChild("AnimalMoveEvent")
+
+-- =========================
+-- ตัวแปรระบบ
+-- =========================
+local AutoDodge = false
+local dodging = false
+local radarPart = nil
+local frontDist = 16
+local sideDist = 11
+local ESP_Enabled = false
+
+local raycastParams = RaycastParams.new()
+raycastParams.FilterDescendantsInstances = {character}
+raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+-- =========================
+-- ฟังก์ชันส่งทิศทางสัตว์
+-- =========================
+local function MoveAnimal(direction)
+	moveEvent:FireServer(direction)
+end
+
+-- =========================
+-- สร้างเรดาร์สีฟ้าแบบสี่เหลี่ยม
+-- =========================
+local function CreateRadar()
+	if radarPart then return end
+	radarPart = Instance.new("Part")
+	radarPart.Name = "Radar"
+	radarPart.Anchored = true
+	radarPart.CanCollide = false
+	radarPart.Size = Vector3.new(sideDist*2,0.2,frontDist)
+	radarPart.Transparency = 0.5
+	radarPart.BrickColor = BrickColor.new("Bright blue")
+	radarPart.Material = Enum.Material.Neon
+	radarPart.Parent = Workspace
+end
+
+local function RemoveRadar()
+	if radarPart then
+		radarPart:Destroy()
+		radarPart = nil
+	end
+end
+
+-- =========================
+-- ตรวจจับ Prop ด้วยหลาย Ray
+-- =========================
+local function CheckRadar()
+	local rays = 9
+	local angleStep = 180 / (rays-1)
+	local forwardCF = root.CFrame
+
+	for i = 0, rays-1 do
+		local angle = math.rad(-90 + i*angleStep)
+		local dir = (CFrame.Angles(0, angle, 0) * forwardCF.LookVector)
+		local distance = (i==0 or i==rays-1) and sideDist or frontDist
+		local ray = Workspace:Raycast(root.Position, dir * distance, raycastParams)
+		if ray and ray.Instance then
+			return ray.Position
+		end
+	end
+	return nil
+end
+
+-- =========================
+-- ฟังก์ชัน ESP Props + Wall
+-- =========================
+local ActiveRooms = Workspace:WaitForChild("ActiveRooms")
+
+local function createESP(object)
+	if not ESP_Enabled then return end
+	if not object:IsDescendantOf(workspace) then return end
+	if object:FindFirstChild("Highlight") then return end
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "Highlight"
+	highlight.Adornee = object
+	highlight.FillColor = Color3.fromRGB(0, 255, 0)
+	highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+	highlight.FillTransparency = 0.7
+	highlight.OutlineTransparency = 0
+	highlight.Parent = object
+end
+
+local function scanRoom(room)
+	local propsFolder = room:FindFirstChild("Props")
+	if propsFolder then
+		for _, obj in ipairs(propsFolder:GetChildren()) do
+			if obj:IsA("Model") or obj:IsA("BasePart") then
+				createESP(obj)
+			end
+		end
+		propsFolder.ChildAdded:Connect(function(obj)
+			task.wait(0.1)
+			createESP(obj)
+		end)
+	end
+
+	local clientFolder = room:FindFirstChild("Client")
+	if clientFolder and clientFolder:FindFirstChild("Wall") then
+		for _, hitbox in ipairs(clientFolder.Wall:GetChildren()) do
+			if hitbox:IsA("BasePart") then
+				createESP(hitbox)
+			end
+		end
+		clientFolder.Wall.ChildAdded:Connect(function(hitbox)
+			task.wait(0.1)
+			if hitbox:IsA("BasePart") then
+				createESP(hitbox)
+			end
+		end)
+	end
+end
+
+local function monitorRooms()
+	for _, room in ipairs(ActiveRooms:GetChildren()) do
+		scanRoom(room)
+	end
+	ActiveRooms.ChildAdded:Connect(function(room)
+		room:WaitForChild("Props", 5)
+		room:WaitForChild("Client", 5)
+		task.wait(0.3)
+		scanRoom(room)
+	end)
+end
+
+local function clearAllESP()
+	for _, room in ipairs(ActiveRooms:GetChildren()) do
+		for _, d in ipairs(room:GetDescendants()) do
+			if d:IsA("Highlight") then
+				d:Destroy()
+			end
+		end
+	end
+end
+
+-- =========================
+-- Loop หลัก Auto Dodge + Prop + Wall Smart
+-- =========================
+-- =========================
+-- Loop หลัก Auto Dodge + Prop + Wall + Shield
+-- =========================
+RunService.Heartbeat:Connect(function()
+	if not root or not root.Parent then return end
+
+	-- อัปเดต Radar / Shield
+	if radarPart then
+		radarPart.CFrame = CFrame.new(root.Position + Vector3.new(0,2,0)) * CFrame.Angles(0, math.rad(root.Orientation.Y), 0)
+		radarPart.Size = Vector3.new(sideDist*2,0.2,frontDist)
+	end
+
+	if shieldPart then
+		shieldPart.CFrame = root.CFrame * CFrame.new(0,1,-5) * CFrame.Angles(math.rad(-20),0,0)
+	end
+
+	if AutoDodge then
+		local propPos = CheckRadar() -- ตรวจ Prop
+		local leftWall = Workspace:Raycast(root.Position, -root.CFrame.RightVector * sideDist, raycastParams)
+		local rightWall = Workspace:Raycast(root.Position, root.CFrame.RightVector * sideDist, raycastParams)
+
+		local desiredMove = 0 -- ค่า default = ตรง
+
+		-- ตรวจว่ามี Prop อยู่ด้านซ้ายหรือขวา
+		local leftProp = false
+		local rightProp = false
+		if propPos then
+			local offset = root.Position - propPos
+			if offset.X > 0 then
+				rightProp = true
+			else
+				leftProp = true
+			end
+		end
+
+		-- ถ้ามี Prop อยู่ทั้งสองข้าง → ไปตรงกลาง
+		if leftProp and rightProp then
+			desiredMove = 0
+		elseif leftProp then
+			desiredMove = 1 -- หลบขวา
+			if rightWall and rightWall.Instance then
+				desiredMove = 0
+			end
+		elseif rightProp then
+			desiredMove = -1 -- หลบซ้าย
+			if leftWall and leftWall.Instance then
+				desiredMove = 0
+			end
+		end
+
+		-- ตรวจชนกับ Shield (กันชนอัตโนมัติ)
+		if shieldPart then
+			local shieldCF = shieldPart.CFrame
+			local shieldPos = shieldCF.Position
+			local shieldSize = shieldPart.Size
+			local offset = root.Position - shieldPos
+			if math.abs(offset.X) <= shieldSize.X/2 and math.abs(offset.Z) <= shieldSize.Z/2 and offset.Y <= 2 then
+				desiredMove = 0 -- ถ้าชนกันชน → ไปตรงกลาง
+			end
+		end
+
+		-- ส่งทิศทางไป Remote
+		if desiredMove ~= 0 then
+			if not dodging then
+				MoveAnimal(desiredMove)
+				dodging = true
+			end
+		else
+			if dodging then
+				MoveAnimal(0)
+				dodging = false
+			end
+		end
+	end
+end)
+
+
+
+
+
+-- =========================
+-- GUI
+-- =========================
+local gui = Instance.new("ScreenGui")
+gui.Name = "AutoDodgeESPGUI"
+gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 280, 0, 200)
+frame.Position = UDim2.new(0.7,0,0.7,0)
+frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
+frame.BackgroundTransparency = 0.2
+frame.BorderSizePixel = 0
+Instance.new("UICorner", frame)
+frame.Parent = gui
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1,0,0,30)
+title.BackgroundTransparency = 1
+title.Text = "🐾 Auto Dodge + ESP"
+title.TextColor3 = Color3.fromRGB(255,255,255)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 16
+title.Parent = frame
+
+-- ปุ่ม Auto Dodge
+local toggleDodge = Instance.new("TextButton")
+toggleDodge.Size = UDim2.new(0,200,0,40)
+toggleDodge.Position = UDim2.new(0.1,0,0.25,0)
+toggleDodge.BackgroundColor3 = Color3.fromRGB(100,0,0)
+toggleDodge.Text = "Auto Dodge: OFF"
+toggleDodge.TextColor3 = Color3.fromRGB(255,255,255)
+toggleDodge.Font = Enum.Font.GothamBold
+toggleDodge.TextSize = 18
+toggleDodge.AutoButtonColor = false
+Instance.new("UICorner", toggleDodge)
+toggleDodge.Parent = frame
+
+toggleDodge.MouseButton1Click:Connect(function()
+	AutoDodge = not AutoDodge
+	if AutoDodge then
+		toggleDodge.BackgroundColor3 = Color3.fromRGB(0,150,0)
+		toggleDodge.Text = "Auto Dodge: ON"
+		CreateRadar()
+	else
+		toggleDodge.BackgroundColor3 = Color3.fromRGB(100,0,0)
+		toggleDodge.Text = "Auto Dodge: OFF"
+		MoveAnimal(0)
+		dodging = false
+		RemoveRadar()
+	end
+end)
+
+-- ปุ่ม ESP
+local toggleESPBtn = Instance.new("TextButton")
+toggleESPBtn.Size = UDim2.new(0,200,0,40)
+toggleESPBtn.Position = UDim2.new(0.1,0,0.55,0)
+toggleESPBtn.BackgroundColor3 = Color3.fromRGB(100,0,0)
+toggleESPBtn.Text = "ESP: OFF"
+toggleESPBtn.TextColor3 = Color3.fromRGB(255,255,255)
+toggleESPBtn.Font = Enum.Font.GothamBold
+toggleESPBtn.TextSize = 18
+toggleESPBtn.AutoButtonColor = false
+Instance.new("UICorner", toggleESPBtn)
+toggleESPBtn.Parent = frame
+
+toggleESPBtn.MouseButton1Click:Connect(function()
+	ESP_Enabled = not ESP_Enabled
+	if ESP_Enabled then
+		toggleESPBtn.BackgroundColor3 = Color3.fromRGB(0,150,0)
+		toggleESPBtn.Text = "ESP: ON"
+		monitorRooms()
+	else
+		toggleESPBtn.BackgroundColor3 = Color3.fromRGB(100,0,0)
+		toggleESPBtn.Text = "ESP: OFF"
+		clearAllESP()
+	end
+end)
+
+
+
+-- ปุ่มปิด GUI + รีเซ็ตค่าทั้งหมด
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0,30,0,30)
+closeBtn.Position = UDim2.new(1,-35,0,5)
+closeBtn.BackgroundColor3 = Color3.fromRGB(200,0,0)
+closeBtn.Text = "✖"
+closeBtn.TextColor3 = Color3.fromRGB(255,255,255)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 18
+Instance.new("UICorner", closeBtn)
+closeBtn.Parent = frame
+
+
+closeBtn.MouseButton1Click:Connect(function()
+	AutoDodge = false
+	ESP_Enabled = false
+	MoveAnimal(0)
+	dodging = false
+	RemoveRadar()
+	clearAllESP()
+	gui:Destroy()
+end)
+
+print("🌿 CHX Auto Dodge + ESP Loaded! (กด GUI เพื่อเปิด/ปิด)")
