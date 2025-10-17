@@ -23,8 +23,8 @@ local moveEvent = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("Animals
 local AutoDodge = false
 local dodging = false
 local radarPart = nil
-local frontDist = 16
-local sideDist = 11
+local frontDist = 21
+local sideDist = 8
 local ESP_Enabled = false
 
 local raycastParams = RaycastParams.new()
