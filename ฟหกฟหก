@@ -1,5 +1,5 @@
 -- ======================================
--- 🌿 CHX Auto Dodge + Radar + ESP (GUI ครบ)
+-- 🌿 CHX Auto Dodge + Radar + ESP + Status (GUI ครบ)
 -- ======================================
 
 -- Services
@@ -23,7 +23,7 @@ local moveEvent = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("Animals
 local AutoDodge = false
 local dodging = false
 local radarPart = nil
-local frontDist = 21
+local frontDist = 25
 local sideDist = 8
 local ESP_Enabled = false
 
@@ -154,89 +154,6 @@ local function clearAllESP()
 end
 
 -- =========================
--- Loop หลัก Auto Dodge + Prop + Wall Smart
--- =========================
--- =========================
--- Loop หลัก Auto Dodge + Prop + Wall + Shield
--- =========================
-RunService.Heartbeat:Connect(function()
-	if not root or not root.Parent then return end
-
-	-- อัปเดต Radar / Shield
-	if radarPart then
-		radarPart.CFrame = CFrame.new(root.Position + Vector3.new(0,2,0)) * CFrame.Angles(0, math.rad(root.Orientation.Y), 0)
-		radarPart.Size = Vector3.new(sideDist*2,0.2,frontDist)
-	end
-
-	if shieldPart then
-		shieldPart.CFrame = root.CFrame * CFrame.new(0,1,-5) * CFrame.Angles(math.rad(-20),0,0)
-	end
-
-	if AutoDodge then
-		local propPos = CheckRadar() -- ตรวจ Prop
-		local leftWall = Workspace:Raycast(root.Position, -root.CFrame.RightVector * sideDist, raycastParams)
-		local rightWall = Workspace:Raycast(root.Position, root.CFrame.RightVector * sideDist, raycastParams)
-
-		local desiredMove = 0 -- ค่า default = ตรง
-
-		-- ตรวจว่ามี Prop อยู่ด้านซ้ายหรือขวา
-		local leftProp = false
-		local rightProp = false
-		if propPos then
-			local offset = root.Position - propPos
-			if offset.X > 0 then
-				rightProp = true
-			else
-				leftProp = true
-			end
-		end
-
-		-- ถ้ามี Prop อยู่ทั้งสองข้าง → ไปตรงกลาง
-		if leftProp and rightProp then
-			desiredMove = 0
-		elseif leftProp then
-			desiredMove = 1 -- หลบขวา
-			if rightWall and rightWall.Instance then
-				desiredMove = 0
-			end
-		elseif rightProp then
-			desiredMove = -1 -- หลบซ้าย
-			if leftWall and leftWall.Instance then
-				desiredMove = 0
-			end
-		end
-
-		-- ตรวจชนกับ Shield (กันชนอัตโนมัติ)
-		if shieldPart then
-			local shieldCF = shieldPart.CFrame
-			local shieldPos = shieldCF.Position
-			local shieldSize = shieldPart.Size
-			local offset = root.Position - shieldPos
-			if math.abs(offset.X) <= shieldSize.X/2 and math.abs(offset.Z) <= shieldSize.Z/2 and offset.Y <= 2 then
-				desiredMove = 0 -- ถ้าชนกันชน → ไปตรงกลาง
-			end
-		end
-
-		-- ส่งทิศทางไป Remote
-		if desiredMove ~= 0 then
-			if not dodging then
-				MoveAnimal(desiredMove)
-				dodging = true
-			end
-		else
-			if dodging then
-				MoveAnimal(0)
-				dodging = false
-			end
-		end
-	end
-end)
-
-
-
-
-
--- =========================
 -- GUI
 -- =========================
 local gui = Instance.new("ScreenGui")
@@ -245,7 +162,7 @@ gui.ResetOnSpawn = false
 gui.Parent = player:WaitForChild("PlayerGui")
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 280, 0, 200)
+frame.Size = UDim2.new(0, 280, 0, 230)
 frame.Position = UDim2.new(0.7,0,0.7,0)
 frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
 frame.BackgroundTransparency = 0.2
@@ -275,21 +192,6 @@ toggleDodge.AutoButtonColor = false
 Instance.new("UICorner", toggleDodge)
 toggleDodge.Parent = frame
 
-toggleDodge.MouseButton1Click:Connect(function()
-	AutoDodge = not AutoDodge
-	if AutoDodge then
-		toggleDodge.BackgroundColor3 = Color3.fromRGB(0,150,0)
-		toggleDodge.Text = "Auto Dodge: ON"
-		CreateRadar()
-	else
-		toggleDodge.BackgroundColor3 = Color3.fromRGB(100,0,0)
-		toggleDodge.Text = "Auto Dodge: OFF"
-		MoveAnimal(0)
-		dodging = false
-		RemoveRadar()
-	end
-end)
-
 -- ปุ่ม ESP
 local toggleESPBtn = Instance.new("TextButton")
 toggleESPBtn.Size = UDim2.new(0,200,0,40)
@@ -302,6 +204,50 @@ toggleESPBtn.TextSize = 18
 toggleESPBtn.AutoButtonColor = false
 Instance.new("UICorner", toggleESPBtn)
 toggleESPBtn.Parent = frame
+
+-- ปุ่มปิด GUI
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0,30,0,30)
+closeBtn.Position = UDim2.new(1,-35,0,5)
+closeBtn.BackgroundColor3 = Color3.fromRGB(200,0,0)
+closeBtn.Text = "✖"
+closeBtn.TextColor3 = Color3.fromRGB(255,255,255)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 18
+Instance.new("UICorner", closeBtn)
+closeBtn.Parent = frame
+
+-- =========================
+-- Status Label
+-- =========================
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(1,0,0,25)
+statusLabel.Position = UDim2.new(0,0,0.8,0)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "Status: Idle"
+statusLabel.TextColor3 = Color3.fromRGB(255,255,0)
+statusLabel.Font = Enum.Font.GothamBold
+statusLabel.TextSize = 16
+statusLabel.Parent = frame
+
+-- =========================
+-- GUI Callbacks
+-- =========================
+toggleDodge.MouseButton1Click:Connect(function()
+	AutoDodge = not AutoDodge
+	if AutoDodge then
+		toggleDodge.BackgroundColor3 = Color3.fromRGB(0,150,0)
+		toggleDodge.Text = "Auto Dodge: ON"
+		CreateRadar()
+	else
+		toggleDodge.BackgroundColor3 = Color3.fromRGB(100,0,0)
+		toggleDodge.Text = "Auto Dodge: OFF"
+		MoveAnimal(0)
+		dodging = false
+		RemoveRadar()
+		statusLabel.Text = "Status: Idle"
+	end
+end)
 
 toggleESPBtn.MouseButton1Click:Connect(function()
 	ESP_Enabled = not ESP_Enabled
@@ -316,21 +262,6 @@ toggleESPBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
-
-
--- ปุ่มปิด GUI + รีเซ็ตค่าทั้งหมด
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0,30,0,30)
-closeBtn.Position = UDim2.new(1,-35,0,5)
-closeBtn.BackgroundColor3 = Color3.fromRGB(200,0,0)
-closeBtn.Text = "✖"
-closeBtn.TextColor3 = Color3.fromRGB(255,255,255)
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.TextSize = 18
-Instance.new("UICorner", closeBtn)
-closeBtn.Parent = frame
-
-
 closeBtn.MouseButton1Click:Connect(function()
 	AutoDodge = false
 	ESP_Enabled = false
@@ -341,4 +272,100 @@ closeBtn.MouseButton1Click:Connect(function()
 	gui:Destroy()
 end)
 
-print("🌿 CHX Auto Dodge + ESP Loaded! (กด GUI เพื่อเปิด/ปิด)")
+-- =========================
+-- Loop หลัก Auto Dodge + Prop + Wall + Status
+-- =========================
+RunService.Heartbeat:Connect(function()
+	if not root or not root.Parent then return end
+
+	if radarPart then
+		radarPart.CFrame = CFrame.new(root.Position + Vector3.new(0,2,0)) * CFrame.Angles(0, math.rad(root.Orientation.Y), 0)
+		radarPart.Size = Vector3.new(sideDist*2,0.2,frontDist)
+	end
+
+	if shieldPart then
+		shieldPart.CFrame = root.CFrame * CFrame.new(0,1,-5) * CFrame.Angles(math.rad(-20),0,0)
+	end
+
+	if AutoDodge then
+		local propPos = CheckRadar()
+		local leftWall = Workspace:Raycast(root.Position, -root.CFrame.RightVector * sideDist, raycastParams)
+		local rightWall = Workspace:Raycast(root.Position, root.CFrame.RightVector * sideDist, raycastParams)
+
+		local desiredMove = 0
+		local statusText = "Moving Forward"
+
+		local leftProp = false
+		local rightProp = false
+		if propPos then
+			local offset = root.Position - propPos
+			if offset.X > 0 then
+				rightProp = true
+			else
+				leftProp = true
+			end
+		end
+
+		if leftProp and rightProp then
+			desiredMove = 0
+			statusText = "Blocked by Props"
+		elseif leftProp then
+			desiredMove = 1
+			if rightWall and rightWall.Instance then
+				desiredMove = 0
+				statusText = "Right Wall! Can't dodge"
+			else
+				statusText = "Dodging Right"
+			end
+		elseif rightProp then
+			desiredMove = -1
+			if leftWall and leftWall.Instance then
+				desiredMove = 0
+				statusText = "Left Wall! Can't dodge"
+			else
+				statusText = "Dodging Left"
+			end
+		else
+			if leftWall and rightWall then
+				desiredMove = 0
+				statusText = "Blocked by Walls"
+			elseif leftWall then
+				desiredMove = 1
+				statusText = "Left Wall! Dodging Right"
+			elseif rightWall then
+				desiredMove = -1
+				statusText = "Right Wall! Dodging Left"
+			else
+				desiredMove = 0
+				statusText = "Moving Forward"
+			end
+		end
+
+		if shieldPart then
+			local shieldCF = shieldPart.CFrame
+			local shieldPos = shieldCF.Position
+			local shieldSize = shieldPart.Size
+			local offset = root.Position - shieldPos
+			if math.abs(offset.X) <= shieldSize.X/2 and math.abs(offset.Z) <= shieldSize.Z/2 and offset.Y <= 2 then
+				desiredMove = 0
+				statusText = "Blocked by Shield"
+			end
+		end
+
+		if desiredMove ~= 0 then
+			if not dodging then
+				MoveAnimal(desiredMove)
+				dodging = true
+			end
+		else
+			if dodging then
+				MoveAnimal(0)
+				dodging = false
+			end
+		end
+
+		statusLabel.Text = "Status: "..statusText
+	end
+end)
+
+print("🌿 CHX Auto Dodge + ESP + Status Loaded! (กด GUI เพื่อเปิด/ปิด)")
